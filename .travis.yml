@@ -26,3 +26,6 @@ env:
     - SNIPPET_FONT_NAME='Source Code Pro'   # set font for generated snippet image
     - SNIPPET_FONT_SIZE=20                 # set font size for generated snippet image
     - SNIPPET_COLOR_SCHEME='Tomorrow-Night' # set color scheme for generated snippet image
+branches:
+  only:
+    - master
