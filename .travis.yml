@@ -15,6 +15,11 @@ script:
   - make
 env:
   global:
+    # by default CI will publish tweet on push to master immediately
+    # but if TWEET_ON_CRON_OR_API_ONLY is set to true, it'll publish only when build is triggered by cron
+    # or api call (by travis CLI or web interface), and all pushes to master will be "queued" for publishing on twitter.
+    - TWEET_ON_CRON_OR_API_ONLY=true
+
     - SNIPPET_FILE_EXTENSION=go # [ OPTIONAL ] set snippet file extension validation
     - SNIPPET_MAX_LINES=20 # [ OPTIONAL, DEFAULT 20 ] reject snippets with more lines than SNIPPET_MAX_LINES
 
