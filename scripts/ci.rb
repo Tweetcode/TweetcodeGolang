@@ -3,51 +3,44 @@ require 'yaml'
 require 'twitter-text'
 TwitterExtractor = Twitter::Extractor
 require 'twitter'
+require 'travis'
 
 module Tweetcode
-  class Travis
-    def set_env_from_config
-      cfg = YAML::load(File.read('.travis.yml'))
-      cfg['env']['global'].each do |e|
-        var, val = e.split('=')
-        ENV[var] = val
-      end
-    end
-
-    def pr?
-      ENV['TRAVIS_PULL_REQUEST'] != 'false'
-    end
-
-    def branch
-      (pr? ? ENV['TRAVIS_PULL_REQUEST_BRANCH'] : ENV['TRAVIS_BRANCH']) || 'HEAD'
-    end
-
-    def ci?
-      ENV['CI']
-    end
-
-    def event_type?(*type)
-      type.include? ENV['TRAVIS_EVENT_TYPE']
-    end
-  end
-
-  class CI < Travis
+  class CI
     def initialize
+      scheduled = ENV['TWEET_ON_CRON_OR_API_ONLY'] == 'true'
       @mode = case
               when event_type?('push', 'pull_request') && branch != 'master'
                 :test
+              when ci? && scheduled && event_type?('cron', 'api')
+                :tweet_scheduled
               when ci? && branch == 'master'
-                :tweet
+                if event_type?('cron', 'api') && scheduled
+                  :tweet_scheduled
+                elsif event_type?('push') && !scheduled
+                  :tweet
+                else
+                  puts "SKIPPING BUILD"
+                  puts "TWEET_ON_CRON_OR_API_ONLY=#{scheduled}"
+                  puts "EVENT TYPE IS #{ENV['TRAVIS_EVENT_TYPE']}"
+                  exit(0)
+                end
               else
                 :preview
               end
       @errors = []
-    end
 
+      if @mode == :scheduled
+        acc_tok = ENV['TRAVIS_API_ACCESS_TOKEN'] || fatal("TRAVIS_API_ACCESS_TOKEN environment variable is not set")
+        client = Travis::Client.new(access_token: acc_tok)
+        @TRAVIS_ENV = client.repo(ENV['TRAVIS_REPO_SLUG']).env_vars
+      end
+    end
 
     def start
       begin
         send(@mode)
+        exit(0)
       rescue => e
         print_errors
         puts e.to_s
@@ -77,8 +70,21 @@ module Tweetcode
       @commits_cnt ||= run("git rev-list --count '#{commit_id}' '^master'").to_i
     end
 
+    def last_scheduled_commit_id
+      @last_scheduled_id ||= ENV['TWEETCODE_LAST_SCHEDULED_ID']
+    end
+
     def commit_id
-      @cid ||= run("git rev-list --no-merges -n 1 HEAD").strip
+      @cid ||= lambda do
+        if @mode == :tweet_scheduled && last_scheduled_commit_id
+          run("git rev-list '#{last_scheduled_commit_id}..HEAD' --reverse").lines[0] || lambda do
+            puts "Nothing to tweet, exiting..."
+            exit(0)
+          end.call
+        else
+          run("git rev-list --no-merges -n 1 HEAD").strip
+        end
+      end.call
     end
 
     def short_commit_id
@@ -186,7 +192,11 @@ module Tweetcode
       ensure
         run("rm -f #{png_path}")
       end
-      exit(0)
+    end
+
+    def tweet_scheduled
+      tweet
+      @TRAVIS_ENV['TWEETCODE_LAST_SCHEDULED_ID'] = commit_id
     end
 
     def test
@@ -216,9 +226,32 @@ module Tweetcode
       puts "\nImage: preview.png"
     end
 
+    def set_env_from_config
+      cfg = YAML::load(File.read('.travis.yml'))
+      cfg['env']['global'].each do |e|
+        var, val = e.split('=')
+        ENV[var] = val
+      end
+    end
+
+    def pr?
+      ENV['TRAVIS_PULL_REQUEST'] != 'false'
+    end
+
+    def branch
+      (pr? ? ENV['TRAVIS_PULL_REQUEST_BRANCH'] : ENV['TRAVIS_BRANCH']) || 'HEAD'
+    end
+
+    def ci?
+      ENV['CI']
+    end
+
+    def event_type?(*type)
+      type.include? ENV['TRAVIS_EVENT_TYPE']
+    end
+
     VERBOSE = ENV['VERBOSE'] && !['0', 'false', 'FALSE'].include?(ENV['VERBOSE'])
 
-    # verbose prints msg if VERBOSE env var was set
     def verbose(msg)
       if VERBOSE
         puts "#{msg}"
