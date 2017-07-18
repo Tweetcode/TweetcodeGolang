@@ -61,6 +61,7 @@ module Tweetcode
     end
 
     def print_errors
+      puts "ERRORS:"
       puts @errors
     end
 
@@ -147,9 +148,11 @@ module Tweetcode
       @tweet_text ||= begin
         m = [note, source ? "Source: #{source}\n" : nil,  "[#{short_commit_id}] by @#{twitter_username}"].compact.join("\n")
         urls = TwitterExtractor.extract_urls(m)
-        if (urls.length > 0 ? m.length - urls.map(&:length).reduce{|a,b| a+b} + urls.length * 23 : m.length) > 140
-          urls.each { |u| m.gsub(u, "X" * 23) }
-          error "Generated tweet has more than 140 characters (URLs replaced by 23 'X' characters): \n#{m}"
+        if tweet_len = (urls.length > 0 ? m.length - urls.map(&:length).reduce{|a,b| a+b} + urls.length * 23 : m.length) > 140
+          urls.each { |u| m.gsub(u, "#{u[0..20]}...") }
+          error "Generated tweet has #{tweet_len} characters, 140 is maximum allowed (any URL is counted as 23 characters): \n#{m}"
+        else
+          verbose "Tweet length: #{tweet_len}"
         end
         verbose("Generated tweet text:\n#{m}")
         m
@@ -219,7 +222,7 @@ module Tweetcode
 
     def preview
       verbose("Commits in branch: #{commits_cnt}")
-      if commits_cnt != 1
+      if commits_cnt != 1 && branch != 'master'
         puts 'Branch must have single commit. See contribution flow'
         exit(1)
       end
@@ -228,6 +231,9 @@ module Tweetcode
       run "mv #{png_path} preview.png"
       puts "Tweet text:\n\n#{tweet_text}"
       validate_snippet
+      if @errors.any?
+        fatal('Preview failed')
+      end
       puts "\nImage: preview.png"
     end
 
@@ -244,7 +250,11 @@ module Tweetcode
     end
 
     def branch
-      (pr? ? ENV['TRAVIS_PULL_REQUEST_BRANCH'] : ENV['TRAVIS_BRANCH']) || 'HEAD'
+      @current_branch ||= if ci?
+        (pr? ? ENV['TRAVIS_PULL_REQUEST_BRANCH'] : ENV['TRAVIS_BRANCH']) || 'HEAD'
+      else
+        run("git rev-parse --abbrev-ref HEAD")
+      end
     end
 
     def ci?
@@ -265,7 +275,7 @@ module Tweetcode
 
     def run(cmd)
       verbose "Running `#{cmd}`"
-      output = `#{cmd.strip}`
+      output = `#{cmd.strip}`.strip
       verbose "Output:\n#{output}\n"
       output
     end
