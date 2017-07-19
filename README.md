@@ -1,5 +1,7 @@
 
-# Tweetcode Golang
+# Tweetcode Golang [![Build Status](https://travis-ci.org/Tweetcode/TweetcodeGolang.svg?branch=master)](https://travis-ci.org/Tweetcode/TweetcodeGolang)
+
+![Tweetcode](https://raw.githubusercontent.com/Tweetcode/TweetcodeGolang/assets/assets/gophers_crowd.png)
 
 Tweetcode Golang allows to post code snippets to [@GolangSnippets twitter](https://twitter.com/GolangSnippets) via Travis CI.
 Follow Contribution Flow below to tweet your snippet.
