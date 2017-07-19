@@ -69,6 +69,21 @@ module Tweetcode
       @commits_cnt ||= run("git rev-list --count '#{commit_id}' '^master'").to_i
     end
 
+    def next_commit(id)
+      c = run("git rev-list #{id}..HEAD --reverse").lines[0]
+      unless c
+        puts "Nothing to tweet, exiting..."
+        exit(0)
+      end
+      c.strip
+    end
+
+    def skip_commit
+      @cid = next_commit(@cid)
+      @raw_msg = nil
+      @file = nil
+    end
+
     def last_scheduled_commit_id
       @last_scheduled_id ||= ENV['TWEETCODE_LAST_SCHEDULED_ID']
     end
@@ -76,10 +91,7 @@ module Tweetcode
     def commit_id
       @cid ||= lambda do
         if @mode == :tweet_scheduled && last_scheduled_commit_id
-          run("git rev-list #{last_scheduled_commit_id}..HEAD --reverse").lines[0] || lambda do
-            puts "Nothing to tweet, exiting..."
-            exit(0)
-          end.call
+          next_commit(last_scheduled_commit_id)
         else
           run("git rev-list --no-merges -n 1 HEAD").strip
         end
@@ -91,14 +103,7 @@ module Tweetcode
     end
 
     def commit_msg
-      @raw_msg ||= lambda do
-        msg = run("git log --format=%B -n 1 #{commit_id}")
-        if msg.include?('[skip ci]') || msg.include?('[ci skip]')
-          puts "Not a snippet, skipping build"
-          exit(0)
-        end
-        msg
-      end.call
+      @raw_msg ||= run("git log --format=%B -n 1 #{commit_id}")
     end
 
     def file
@@ -121,6 +126,9 @@ module Tweetcode
     end
 
     def parsed_msg
+      while ['[skip ci]', '[ci skip]'].any?{|t| commit_msg.include?(t)} do
+        skip_commit
+      end
       begin
         @parsed_msg ||= YAML::load(commit_msg)
         if @parsed_msg['note'].nil? || @parsed_msg['twitter_username'].nil?
@@ -204,6 +212,7 @@ module Tweetcode
 
     def tweet_scheduled
       tweet
+      verbose("Setting TWEETCODE_LAST_SCHEDULED_ID from #{ENV['TWEETCODE_LAST_SCHEDULED_ID']} to #{commit_id}")
       @travis_env.upsert('TWEETCODE_LAST_SCHEDULED_ID', commit_id, public: true)
     end
 
