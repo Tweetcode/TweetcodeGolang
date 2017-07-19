@@ -186,6 +186,7 @@ module Tweetcode
     end
 
     def tweet
+      t_txt = tweet_text
       png_path = make_png
       unless File.file?(png_path)
         puts("Failed to generate image:")
@@ -199,7 +200,7 @@ module Tweetcode
         config.access_token_secret = ENV["TWITTER_ACCESS_SECRET"]
       end
       begin
-        t.update_with_media(tweet_text, File.open(png_path, 'r'))
+        t.update_with_media(t_txt, File.open(png_path, 'r'))
         puts("Tweet has been successfully published")
       rescue => e
         puts "Failed to publish tweet:"
